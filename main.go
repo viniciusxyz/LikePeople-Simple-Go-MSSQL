@@ -2,43 +2,33 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"context"
 	"net/http"
-	"database/sql"
+	"strconv"
+
 	"github.com/gin-gonic/contrib/static"
-	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/mssql"
 )
 
-var db *sql.DB
+type PESSOA struct {
+	IDPessoa  uint   `gorm:"primary_key" json:"idpessoa,omitempty" `
+	Nome      string `gorm:"size:255" json:"nome,omitempty" `
+	Sobrenome string `gorm:"size:255" json:"sobrenome,omitempty" `
+	Apelido   string `gorm:"size:255" json:"apelido,omitempty" `
+	Likes     int    `gorm:"size:11" json:"likes,omitempty" `
+	Deslikes  int    `gorm:"size:11" json:"deslikes,omitempty" `
+}
 
-var server = "127.0.0.1"
-var port = 1480
-var user = "sa"
-var password = "@Password123"
-var database = "LIKEPEOPLE"
+var (
+	server   = "localhost"
+	port     = 1480
+	user     = "sa"
+	password = "@Password123"
+	database = "LIKEPEOPLE"
+)
 
 func main() {
-
-	/*
-		Conexão com banco de dados
-	*/
-
-	connString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%d;database=%s;",
-	server, user, password, port, database)
-
-	var err error
-
-    // Create connection pool
-    db, err = sql.Open("sqlserver", connString)
-    if err != nil {
-        log.Fatal("Error creating connection pool:", err.Error())
-    }
-	fmt.Printf("Connected!\n")
-	
-	count, err := ReadEmployees()
-    fmt.Printf("Read %d rows successfully.\n", count)
 
 	router := gin.Default()
 
@@ -47,60 +37,116 @@ func main() {
 
 	api := router.Group("/api")
 	{
+		// Exibit todas as pessoas cadastradas
 		api.GET("/pessoas", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "pong",
-			})
+			c.JSON(http.StatusOK, getPessoas())
 		})
-		api.GET("/teste", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "Teste Group API GO",
-			})
+
+		// Exibir uma pessoa utilizando o ID como identificador
+		api.GET("/pessoas/:id", func(c *gin.Context) {
+			id := c.Params.ByName("id")
+			user_id, _ := strconv.Atoi(id)
+			c.JSON(http.StatusOK, getPessoasId(user_id))
+		})
+
+		// Criar Pessoa
+		api.POST("/pessoas", func(c *gin.Context) {
+			var novoUsuario PESSOA
+			c.ShouldBindJSON(&novoUsuario)
+			criarPessoa(novoUsuario)
+			c.JSON(http.StatusOK, "OK")
+		})
+
+		// Exibir uma pessoa utilizando o ID como identificador
+		api.DELETE("/pessoas/:id", func(c *gin.Context) {
+			id := c.Params.ByName("id")
+			user_id, _ := strconv.Atoi(id)
+			c.JSON(http.StatusOK, deletePessoaId(user_id))
+		})
+
+		api.PUT("/pessoas", func(c *gin.Context) {
+			var attUsuario PESSOA
+			c.ShouldBindJSON(&attUsuario)
+			criarPessoa(attUsuario)
+			c.JSON(http.StatusOK, "OK")
 		})
 	}
 
-	router.Run(":3002")
+	router.Run(":3005")
 }
 
+func getConnection() (db *gorm.DB) {
 
-func ReadEmployees() (int, error) {
+	connectionString := fmt.Sprintf("server=%s;user id=%s;password=%s;port=%d;database=%s",
+		server, user, password, port, database)
 
-    ctx := context.Background()
+	db, err := gorm.Open("mssql", connectionString)
 
-    // Check if database is alive.
-    err := db.PingContext(ctx)
-    if err != nil {
-        log.Fatal("Error pinging database: " + err.Error())
-    }
+	if err != nil {
+		panic("failed to connect database")
+		fmt.Printf(err.Error())
+		return
+	}
 
-    tsql := fmt.Sprintf("SELECT ID_PESSOA,NOME,APELIDO from PESSOAS")
+	db.AutoMigrate(&PESSOA{})
 
-    // Execute query
-    rows, err := db.QueryContext(ctx, tsql)
-    if err != nil {
-        log.Fatal("Error reading rows: " + err.Error())
-        return -1, err
-    }
+	return db
+}
 
-    defer rows.Close()
+func criarPessoa(pessoa PESSOA) {
+	// Cria conexão com banco de dados
+	db := getConnection()
+	// Cria nova pessoa no DB
+	db.Create(&pessoa)
+	// Fecha conexão com o banco de dados
+	db.Close()
+}
 
-    var count int = 0
+func getPessoas() (pessoas []PESSOA) {
 
-    // Iterate through the result set.
-    for rows.Next() {
-        var NOME, APELIDO string
-        var ID_PESSOA int
+	// Array de pessoas
+	var tdPessoas []PESSOA
 
-        // Get values from row.
-        err := rows.Scan(&ID_PESSOA, &NOME, &APELIDO)
-        if err != nil {
-            log.Fatal("Error reading rows: " + err.Error())
-            return -1, err
-        }
+	// Cria conexão com o banco de dados
+	db := getConnection()
 
-        fmt.Printf("ID Pessoa: %d, Nome: %s, Apelido: %s\n", ID_PESSOA, NOME, APELIDO)
-        count++
-    }
+	// Busca todos usuários e os adiciona ao array tdPessoas
+	db.Find(&tdPessoas)
 
-    return count, nil
+	// Encerra conexão com o banco de dados
+	db.Close()
+
+	// Retorna array de pessoas
+	return tdPessoas
+}
+
+func getPessoasId(id int) (pessoa PESSOA) {
+	var returnPessoa PESSOA
+
+	db := getConnection()
+	db.Find(&returnPessoa, id)
+	db.Close()
+	return returnPessoa
+}
+
+func deletePessoaId(id int) PESSOA {
+	var returnPessoa PESSOA
+
+	db := getConnection()
+	db.Delete(&returnPessoa, id)
+	db.Close()
+	return returnPessoa
+}
+
+func putPessoa(pessoa PESSOA) PESSOA {
+	var attPessoa PESSOA
+	// Cria conexão com banco de dados
+	db := getConnection()
+	// Cria nova pessoa no DB
+	db.Find(&attPessoa, 15)
+	db.Save(&attPessoa)
+	// Fecha conexão com o banco de dados
+	db.Close()
+	fmt.Print(pessoa)
+	return attPessoa
 }

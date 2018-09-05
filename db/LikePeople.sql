@@ -50,3 +50,15 @@ INSERT INTO PESSOAS (NOME,SOBRENOME,APELIDO,LIKES,DESLIKES) VALUES(
 )
 
 select * from PESSOAS
+
+use LIKEPEOPLE
+SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+
+use testes
+select * from testes
+
+select * from PESSOAS
+
+drop TABLE testes
+drop table PESSOAS
+drop table USUARIOS
